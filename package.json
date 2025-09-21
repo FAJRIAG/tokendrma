@@ -1,8 +1,4 @@
 {
-  "name": "my-token-service",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "jsonwebtoken": "^9.0.2"
-  }
+  "name": "tokendrma",
+  "private": true
 }

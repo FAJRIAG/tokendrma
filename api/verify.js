@@ -4,7 +4,6 @@ export const config = { runtime: "edge" };
 const textEncoder = new TextEncoder();
 
 const b64uToUint8 = (b64u) => {
-  // pad + convert urlsafe -> std
   b64u = b64u.replaceAll("-", "+").replaceAll("_", "/");
   const pad = b64u.length % 4 ? 4 - (b64u.length % 4) : 0;
   const b64 = b64u + "=".repeat(pad);
@@ -13,6 +12,8 @@ const b64uToUint8 = (b64u) => {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 };
+
+const b64uToJSON = (b64u) => JSON.parse(new TextDecoder().decode(b64uToUint8(b64u)));
 
 function jsonResponse(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -44,43 +45,35 @@ async function verifyHS256(secret, signingInput, signatureB64u) {
 function getWrappedToken(req) {
   const url = new URL(req.url);
   const q = url.searchParams.get("token") || url.searchParams.get("t");
-  if (q) return q;
-  // Body JSON (Edge: Request.json())
-  return null;
+  return q || null;
 }
 
 export default async function handler(req) {
   if (req.method === "OPTIONS") return new Response(null, { status: 204 });
 
-  const JWT_SECRET = process.env.JWT_SECRET || "GANTI_DENGAN_SECRET_YANG_KUAT";
+  const JWT_SECRET = "hR8%Zp@1Qx#sK7!vLm4nBt$2Dy&Wj9^CgUf0*Xh6oPi3rYe+Aq5vMz7wNl8RbT";
 
   let wrapped = getWrappedToken(req);
   if (!wrapped && req.method !== "GET") {
     try {
       const body = await req.json();
       wrapped = body?.token || null;
-    } catch { /* ignore */ }
+    } catch {}
   }
   if (!wrapped) return jsonResponse({ ok: false, error: "missing token" }, 400);
 
   try {
-    // unwrap base64 -> jwt
     const jwt = atob(wrapped);
     const [hB64u, pB64u, sB64u] = jwt.split(".");
-    if (!hB64u || !pB64u || !sB64u) {
-      return jsonResponse({ ok: false, error: "malformed jwt" }, 401);
-    }
+    if (!hB64u || !pB64u || !sB64u) return jsonResponse({ ok: false, error: "malformed jwt" }, 401);
 
     const signingInput = `${hB64u}.${pB64u}`;
     const valid = await verifyHS256(JWT_SECRET, signingInput, sB64u);
     if (!valid) return jsonResponse({ ok: false, error: "invalid signature" }, 401);
 
-    // decode header & payload
-    const decodeB64uJSON = (b64u) => JSON.parse(new TextDecoder().decode(b64uToUint8(b64u)));
-    const header = decodeB64uJSON(hB64u);
-    const payload = decodeB64uJSON(pB64u);
+    const header = b64uToJSON(hB64u);
+    const payload = b64uToJSON(pB64u);
 
-    // cek exp
     const now = Math.floor(Date.now() / 1000);
     if (payload?.exp && now >= payload.exp) {
       return jsonResponse({ ok: false, error: "token expired", payload }, 401);
